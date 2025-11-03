@@ -1,0 +1,13 @@
+
+[install]
+production = false
+
+[run]
+hot = true
+
+
+# 🚨 Rule Triggered: Profanity
+# User: @0xabc123
+# Message: "f*** this"
+# Action: Warned
+# Timestamp: 2025-11-03T22:41Z
