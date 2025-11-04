@@ -1,5 +1,11 @@
 import { Database } from "bun:sqlite";
-import { TownProfile, MemberProfile, Infraction, TownSettings } from "../types";
+import {
+  TownProfile,
+  MemberProfile,
+  Infraction,
+  TownSettings,
+  WelcomeMessageDBType,
+} from "../types";
 
 export const db = new Database("data/modbot.db");
 
@@ -24,9 +30,9 @@ export function getTown(townId: string): TownProfile {
     .get(townId) as TownProfile;
   const settings: TownSettings = row
     ? {
-        profanityFilter: !!row.settings.profanityFilter,
-        autoWarn: !!row.settings.autoWarn,
-        warnAfter: row.settings.warnAfter,
+        profanityFilter: !!row.profanityFilter,
+        autoWarn: !!row.autoWarn,
+        warnAfter: row.warnAfter,
       }
     : {
         profanityFilter: true,
@@ -119,4 +125,35 @@ export function addLabel(townId: string, userId: string, label: string) {
       "UPDATE members SET labels = ? WHERE town_id = ? AND user_id = ?",
     ).run(JSON.stringify(member.labels), townId, userId);
   }
+}
+
+export function saveWelcomeMessage(
+  spaceId: string,
+  channelId: string,
+  messageId: string,
+) {
+  const insertStmt = db.prepare(`
+    INSERT INTO welcome_messages (space_id, channel_id, message_id)
+    VALUES (?, ?, ?)
+  `);
+  insertStmt.run(spaceId, channelId, messageId);
+
+  // 🧹 Delete all older messages for this channel (keep only the latest)
+  const cleanupStmt = db.prepare(`
+    DELETE FROM welcome_messages
+    WHERE space_id = ? AND channel_id = ? AND message_id != ?
+  `);
+  cleanupStmt.run(spaceId, channelId, messageId);
+}
+
+export function getWelcomeMessage(
+  spaceId: string,
+  channelId: string,
+): string | null {
+  const row = db
+    .query(
+      "SELECT message_id FROM welcome_messages WHERE space_id = ? AND channel_id = ? ORDER BY id DESC LIMIT 1",
+    )
+    .get(spaceId, channelId) as WelcomeMessageDBType;
+  return row ? (row.messageId as string) : null;
 }

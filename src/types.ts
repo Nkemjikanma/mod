@@ -44,3 +44,10 @@ export interface BotCommand {
   description: string;
   handler: CommandHandler;
 }
+
+export interface WelcomeMessageDBType {
+  id: number;
+  spaceId: string;
+  channelId: string;
+  messageId: string;
+}

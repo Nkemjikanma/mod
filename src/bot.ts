@@ -5,17 +5,16 @@ import {
   MessageOpts,
 } from "@towns-protocol/bot";
 import { checkProfanity } from "./modules/profanity";
-import { ensureTown, getTown } from "./db/index";
+import {
+  ensureTown,
+  getTown,
+  saveWelcomeMessage,
+  getWelcomeMessage,
+} from "./db/index";
 import { handleMuteLabel } from "./commands/muteLabel";
 import { handleInfractions } from "./commands/infractions";
 import commands from "./commands";
 import { handleBotMention } from "./utils/botMentions";
-import {
-  InteractionRequest,
-  InteractionResponse,
-  InteractionResponseSchema,
-  InteractionRequestSchema,
-} from "@towns-protocol/proto";
 
 export const bot = await makeTownsBot(
   process.env.PRIVATE_DATA!,
@@ -23,6 +22,10 @@ export const bot = await makeTownsBot(
   { commands },
 );
 
+export const { jwtMiddleware, handler } = bot.start();
+console.log(
+    process.env.PRIVATE_DATA!,
+)
 // handle "onInstall" situation
 bot.onChannelJoin(async (handler, event) => {
   const { spaceId, userId, channelId } = event;
@@ -41,37 +44,57 @@ bot.onChannelJoin(async (handler, event) => {
   const channelSettings = await handler.getChannelSettings(spaceId);
   const ACCESS_EMOJI = "✅";
 
-  await handler.sendInteractionRequest(channelId, {
-    content: {
-      case: "genericRequest",
-      value: {
-        id: userId,
-        name: "welcomeInteraction",
-        payload: {
-          type: "welcome",
-          userId,
-          message: `
-👋 Welcome to the town, <@${userId}>!
+  const welcomeMessage = `
+👋 **Welcome to the ${town.townId}>, <@${userId}>!**
 
-Please read the guidelines:
+Please take a moment to review our community guidelines:
 
-• Be respectful  
-• No spamming  
-• Follow the rules in #rules  
+> • Be respectful
+> • No spamming
+> • Follow all rules
 
-React with ${ACCESS_EMOJI} to gain full access to the town.
-          `,
-          emoji: ACCESS_EMOJI,
-        },
-      },
-    },
-  });
+React with ${ACCESS_EMOJI} below to gain access to the rest of the town channels.
+`;
 
+  const messageEvent = await handler.sendMessage(channelId, welcomeMessage);
+
+  await handler.sendReaction(channelId, messageEvent.eventId, ACCESS_EMOJI);
   console.log(`[mod-bot] Sent welcome interaction to ${userId}`);
 
-  channelSettings.isAutojoin;
+  saveWelcomeMessage(spaceId, channelId, messageEvent.eventId);
+});
 
-  bot.onReaction(async (handler, event) => {});
+bot.onReaction(async (handler, event) => {
+  const { reaction, messageId, spaceId, channelId, userId } = event;
+  const ACCESS_EMOJI = "✅";
+
+  // Handle welcome message verification
+  const latestWelcomeId = getWelcomeMessage(spaceId, channelId);
+  if (reaction === ACCESS_EMOJI && latestWelcomeId && messageId === latestWelcomeId) {
+    console.log(`[mod-bot] ${userId} verified — granting access.`);
+
+    // Grant access to other channels
+    const channels = await handler.listChannels(spaceId);
+    for (const ch of channels) {
+      if (ch.id !== channelId && ch.type !== "private") {
+        try {
+          await handler.addMemberToChannel(spaceId, ch.id, userId);
+        } catch (err) {
+          console.error(`Failed to add ${userId} to ${ch.id}`, err);
+        }
+      }
+    }
+
+    await handler.sendMessage(
+      channelId,
+      `✅ <@${userId}> now has full access to the town! Welcome aboard! 🎉`,
+    );
+  }
+
+  // Handle other reactions (e.g., waves)
+  if (reaction === "👋") {
+    await handler.sendMessage(channelId, "I saw your wave! 👋");
+  }
 });
 
 // ✅ Safe lazy init on message too
@@ -119,7 +142,9 @@ bot.onMessage(async (handler, event) => {
         channelId,
       );
     }
-  } catch (error) {}
+  } catch (error) {
+    console.log(`An error occured while handling onMessage ${error}`);
+  }
 });
 
 // Slash commands
@@ -141,10 +166,3 @@ bot.onSlashCommand(
     );
   },
 );
-
-bot.onReaction(async (handler, { reaction, channelId }) => {
-  if (reaction === "👋") {
-    await handler.sendMessage(channelId, "I saw your wave! 👋");
-  }
-});
-export const { jwtMiddleware, handler } = bot.start();

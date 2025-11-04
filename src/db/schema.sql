@@ -23,3 +23,10 @@ CREATE TABLE IF NOT EXISTS infractions (
   message_id TEXT,
   timestamp INTEGER
 );
+
+CREATE TABLE IF NOT EXISTS welcome_messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  space_id TEXT,
+  channel_id TEXT,
+  message_id TEXT
+)
