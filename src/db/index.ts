@@ -5,6 +5,7 @@ import {
   Infraction,
   TownSettings,
   WelcomeMessageDBType,
+  TownDBRow,
 } from "../types";
 
 export const db = new Database("data/modbot.db");
@@ -19,25 +20,28 @@ export function ensureTown(townId: string) {
     .get(townId);
   if (!existing) {
     db.query(
-      "INSERT INTO towns (town_id, profanity_filter, auto_warn, warn_after) VALUES (?, ?, ?, ?)",
-    ).run(townId, 1, 1, 3);
+      "INSERT INTO towns (town_id, profanity_filter, auto_warn, warn_after, spam_detection) VALUES (?, ?, ?, ?, ?)",
+    ).run(townId, 1, 1, 3, 1);
   }
 }
 
 export function getTown(townId: string): TownProfile {
   const row = db
     .query("SELECT * FROM towns WHERE town_id = ?")
-    .get(townId) as TownProfile;
+    .get(townId) as TownDBRow | undefined;
+
   const settings: TownSettings = row
     ? {
-        profanityFilter: !!row.profanityFilter,
-        autoWarn: !!row.autoWarn,
-        warnAfter: row.warnAfter,
+        profanityFilter: !!row.profanity_filter,
+        autoWarn: !!row.auto_warn,
+        warnAfter: row.warn_after,
+        spamDetection: !!row.spam_detection,
       }
     : {
         profanityFilter: true,
         autoWarn: true,
         warnAfter: 3,
+        spamDetection: true,
       };
 
   return {
@@ -56,6 +60,7 @@ export function updateTownSetting(
     profanityFilter: "profanity_filter",
     autoWarn: "auto_warn",
     warnAfter: "warn_after",
+    spamDetection: "spam_detection",
   };
   const col = map[key];
   db.query(`UPDATE towns SET ${col} = ? WHERE town_id = ?`).run(value, townId);
@@ -65,23 +70,23 @@ export function updateTownSetting(
 export function getMember(townId: string, userId: string): MemberProfile {
   let memberRow = db
     .query("SELECT * FROM members WHERE town_id = ? AND user_id = ?")
-    .get(townId, userId) as MemberProfile;
+    .get(townId, userId) as any;
 
   if (!memberRow) {
-    db.query("INSERT INTO members (town_id, user_id) VALUES (?, ?)").run(
+    db.query("INSERT OR IGNORE INTO members (town_id, user_id) VALUES (?, ?)").run(
       townId,
       userId,
     );
     memberRow = db
       .query("SELECT * FROM members WHERE town_id = ? AND user_id = ?")
-      .get(townId, userId) as MemberProfile;
+      .get(townId, userId) as any;
   }
 
   return {
     userId,
     infractions: getInfractions(townId, userId),
-    labels: JSON.parse(memberRow.labels.join(", ") || "[]"),
-    warnings: memberRow.warnings || 0,
+    labels: JSON.parse((memberRow?.labels || "[]") as string),
+    warnings: memberRow?.warnings || 0,
   };
 }
 
@@ -90,6 +95,12 @@ export function incrementWarning(townId: string, userId: string) {
   db.query(
     "UPDATE members SET warnings = ? WHERE town_id = ? AND user_id = ?",
   ).run(member.warnings + 1, townId, userId);
+}
+
+export function resetWarnings(townId: string, userId: string) {
+  db.query(
+    "UPDATE members SET warnings = 0 WHERE town_id = ? AND user_id = ?",
+  ).run(townId, userId);
 }
 
 export function addInfraction(
@@ -110,11 +121,17 @@ export function addInfraction(
 }
 
 export function getInfractions(townId: string, userId: string): Infraction[] {
-  return db
+  return (db
     .query(
       "SELECT * FROM infractions WHERE town_id = ? AND user_id = ? ORDER BY timestamp DESC",
     )
-    .all(townId, userId) as Infraction[];
+    .all(townId, userId) as any[]).map(row => ({
+      id: row.id,
+      type: row.type,
+      message: row.message,
+      messageId: row.message_id,
+      timestamp: row.timestamp,
+    }));
 }
 
 export function addLabel(townId: string, userId: string, label: string) {
@@ -125,6 +142,14 @@ export function addLabel(townId: string, userId: string, label: string) {
       "UPDATE members SET labels = ? WHERE town_id = ? AND user_id = ?",
     ).run(JSON.stringify(member.labels), townId, userId);
   }
+}
+
+export function removeLabel(townId: string, userId: string, label: string) {
+  const member = getMember(townId, userId);
+  const filtered = member.labels.filter(l => l !== label);
+  db.query(
+    "UPDATE members SET labels = ? WHERE town_id = ? AND user_id = ?",
+  ).run(JSON.stringify(filtered), townId, userId);
 }
 
 export function saveWelcomeMessage(
@@ -154,6 +179,6 @@ export function getWelcomeMessage(
     .query(
       "SELECT message_id FROM welcome_messages WHERE space_id = ? AND channel_id = ? ORDER BY id DESC LIMIT 1",
     )
-    .get(spaceId, channelId) as WelcomeMessageDBType;
-  return row ? (row.messageId as string) : null;
+    .get(spaceId, channelId) as any;
+  return row ? (row.message_id as string) : null;
 }

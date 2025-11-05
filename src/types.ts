@@ -17,6 +17,7 @@ export type TownSettings = {
   profanityFilter: boolean;
   autoWarn: boolean;
   warnAfter: number;
+  spamDetection: boolean;
 };
 
 export type TownProfile = {
@@ -50,4 +51,12 @@ export interface WelcomeMessageDBType {
   spaceId: string;
   channelId: string;
   messageId: string;
+}
+
+export interface TownDBRow {
+  town_id: string;
+  profanity_filter: number;
+  auto_warn: number;
+  warn_after: number;
+  spam_detection: number;
 }

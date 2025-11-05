@@ -31,10 +31,21 @@ export async function handleSettings(
 
   // No args → show current settings
   if (args.length === 0) {
-    await handler.sendMessage(
-      channelId,
-      `Current Settings:\n\`\`\`json\n${JSON.stringify(town.settings, null, 2)}\n\`\`\``,
-    );
+    const settingsText = `**Current Moderation Settings:**
+
+\`\`\`json
+${JSON.stringify(town.settings, null, 2)}
+\`\`\`
+
+**Usage:** \`/settings <key> <value>\`
+
+**Available keys:**
+- \`profanityFilter\` (true/false)
+- \`autoWarn\` (true/false)
+- \`warnAfter\` (number)
+- \`spamDetection\` (true/false)`;
+
+    await handler.sendMessage(channelId, settingsText);
     return;
   }
 
@@ -43,24 +54,31 @@ export async function handleSettings(
     "profanityFilter",
     "autoWarn",
     "warnAfter",
+    "spamDetection",
   ];
 
   if (!allowedKeys.includes(key as keyof TownSettings)) {
-    await handler.sendMessage(channelId, `Unknown setting: ${key}`);
+    await handler.sendMessage(channelId, `❌ Unknown setting: ${key}`);
     return;
   }
 
   const typedKey = key as keyof TownSettings;
 
   // Convert value to boolean/number
-  const newValue: boolean | number =
-    value === "true" ? true : value === "false" ? false : parseInt(value);
+  let newValue: boolean | number;
+  if (value === "true") newValue = true;
+  else if (value === "false") newValue = false;
+  else if (!isNaN(parseInt(value))) newValue = parseInt(value);
+  else {
+    await handler.sendMessage(channelId, `❌ Invalid value: ${value}`);
+    return;
+  }
 
   // Update DB
   updateTownSetting(spaceId, typedKey, newValue);
 
   await handler.sendMessage(
     channelId,
-    `✅ Updated setting "${typedKey}" → ${newValue}`,
-  );
+    `✅ Updated setting **${typedKey}** → \`${newValue}\``,
+  )
 }
